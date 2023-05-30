@@ -3,7 +3,7 @@ COPY ./pom.xml ./pom.xml
 COPY ./src ./src
 RUN mvn clean package -DskipTests
 
-FROM openjdk:17-jdk-slim-buster
-COPY --from=build /target/messengerApi-0.0.1-SNAPSHOT.jar application.jar
-ENTRYPOINT ["java", "-jar", "application.jar"]
-EXPOSE 8080
+FROM amazoncorretto:17-alpine-jdk
+WORKDIR "/app"
+COPY --from=builder /target/*.jar /messengerApi-0.0.1-SNAPSHOT.jar
+ENTRYPOINT ["java", "-jar", "/messengerApi-0.0.1-SNAPSHOT.jar"]
