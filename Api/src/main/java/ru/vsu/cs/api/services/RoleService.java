@@ -1,5 +1,6 @@
 package ru.vsu.cs.api.services;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +11,7 @@ import java.math.BigInteger;
 
 @Service
 @Transactional(readOnly = true)
+@Slf4j
 public class RoleService {
     private final RoleRepository roleRepository;
 
@@ -20,11 +22,20 @@ public class RoleService {
 
     @Transactional
     public Role save(Role role) {
+        log.info("Create role (" + role.getName() + ", " + role.getIsAdmin() + ", " + role.getIsCreator() + ")");
         return roleRepository.saveAndFlush(role);
     }
 
     @Transactional
+    public void update(BigInteger id, Role role) {
+        role.setId(id);
+        log.info("Updated role with id: " + id);
+        roleRepository.save(role);
+    }
+
+    @Transactional
     public void delete(BigInteger id) {
+        log.info("Deleted role with id: " + id);
         roleRepository.deleteById(id);
     }
 }

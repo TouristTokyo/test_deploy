@@ -10,6 +10,7 @@ import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 import ru.vsu.cs.api.dto.RoleCreationDto;
 import ru.vsu.cs.api.models.Channel;
+import ru.vsu.cs.api.models.Member;
 import ru.vsu.cs.api.models.Role;
 import ru.vsu.cs.api.models.User;
 import ru.vsu.cs.api.services.ChannelService;
@@ -40,7 +41,7 @@ public class RoleController {
         this.channelService = channelService;
     }
 
-    @PostMapping("/create")
+    @PutMapping("/update")
     @Operation(summary = "Создание/Обновление роли")
     public ResponseEntity<HttpStatus> create(@Valid @RequestBody RoleCreationDto roleCreationDto,
                                              BindingResult bindingResult) {
@@ -51,9 +52,15 @@ public class RoleController {
         User user = userService.getUserByName(roleCreationDto.getUsername());
         Channel channel = channelService.getChannelByName(roleCreationDto.getChannelName());
 
-        Role role = roleService.save(new Role(roleCreationDto.getName(), roleCreationDto.getIsAdmin(), false));
+        Member member = memberService.getMemberByUserAndChannel(user, channel);
 
-        memberService.updateRole(user, channel, role);
+        Role role = member.getRole();
+
+        roleService.update(role.getId(), new Role(roleCreationDto.getName(), roleCreationDto.getIsAdmin(), false));
+
+        //Role role = roleService.save(new Role(roleCreationDto.getName(), roleCreationDto.getIsAdmin(), false));
+
+        memberService.updateRole(member, role);
 
         return new ResponseEntity<>(HttpStatus.OK);
     }

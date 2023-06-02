@@ -57,8 +57,7 @@ public class MemberService {
     }
 
     @Transactional
-    public void updateRole(User user, Channel channel, Role role) {
-        Member member = getMemberByUserAndChannel(user, channel);
+    public void updateRole(Member member, Role role) {
         member.setRole(role);
         memberRepository.save(member);
 
