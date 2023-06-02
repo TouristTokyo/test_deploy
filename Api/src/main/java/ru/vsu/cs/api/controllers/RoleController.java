@@ -18,7 +18,9 @@ import ru.vsu.cs.api.services.MemberService;
 import ru.vsu.cs.api.services.RoleService;
 import ru.vsu.cs.api.services.UserService;
 import ru.vsu.cs.api.utils.ErrorResponse;
+import ru.vsu.cs.api.utils.exceptions.ChannelException;
 import ru.vsu.cs.api.utils.exceptions.MemberException;
+import ru.vsu.cs.api.utils.exceptions.UserException;
 
 import java.time.LocalDateTime;
 
@@ -56,11 +58,9 @@ public class RoleController {
 
         Role role = member.getRole();
 
-        roleService.update(role.getId(), new Role(roleCreationDto.getName(), roleCreationDto.getIsAdmin(), false));
+        Role newRole = roleService.update(role.getId(), new Role(roleCreationDto.getName(), roleCreationDto.getIsAdmin(), false));
 
-        //Role role = roleService.save(new Role(roleCreationDto.getName(), roleCreationDto.getIsAdmin(), false));
-
-        memberService.updateRole(member, role);
+        memberService.updateRole(member, newRole);
 
         return new ResponseEntity<>(HttpStatus.OK);
     }
@@ -71,7 +71,25 @@ public class RoleController {
                 ex.getMessage(),
                 LocalDateTime.now()
         );
-        return new ResponseEntity<>(response, HttpStatus.PAYLOAD_TOO_LARGE);
+        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler()
+    private ResponseEntity<ErrorResponse> channelException(ChannelException ex) {
+        ErrorResponse response = new ErrorResponse(
+                ex.getMessage(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
+    }
+
+    @ExceptionHandler
+    private ResponseEntity<ErrorResponse> userException(UserException ex) {
+        ErrorResponse response = new ErrorResponse(
+                ex.getMessage(),
+                LocalDateTime.now()
+        );
+        return new ResponseEntity<>(response, HttpStatus.NOT_FOUND);
     }
 
 

@@ -27,10 +27,11 @@ public class RoleService {
     }
 
     @Transactional
-    public void update(BigInteger id, Role role) {
+    public Role update(BigInteger id, Role role) {
         role.setId(id);
         log.info("Updated role with id: " + id);
         roleRepository.save(role);
+        return role;
     }
 
     @Transactional

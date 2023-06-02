@@ -11,13 +11,12 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
-import ru.vsu.cs.api.dto.ChannelCreationDto;
-import ru.vsu.cs.api.dto.UserCreationDto;
-import ru.vsu.cs.api.dto.UserLoginDto;
+import ru.vsu.cs.api.dto.*;
 import ru.vsu.cs.api.dto.message.ChannelMessageCreationDto;
 import ru.vsu.cs.api.dto.message.ChatMessageCreationDto;
 import ru.vsu.cs.api.models.*;
 import ru.vsu.cs.api.services.*;
+import ru.vsu.cs.api.utils.exceptions.ChannelException;
 import ru.vsu.cs.api.utils.exceptions.UserException;
 
 import java.math.BigInteger;
@@ -55,9 +54,11 @@ class MessengerApiApplicationTests {
     private final MessageService messageService;
     @MockBean
     private final RoleService roleService;
+    @MockBean
+    private final SavedMessageService savedMessageService;
 
     @Autowired
-    public MessengerApiApplicationTests(MockMvc mockMvc, ObjectMapper objectMapper, UserService userService, ChatService chatService, ChannelService channelService, MemberService memberService, MessageService messageService, RoleService roleService) {
+    public MessengerApiApplicationTests(MockMvc mockMvc, ObjectMapper objectMapper, UserService userService, ChatService chatService, ChannelService channelService, MemberService memberService, MessageService messageService, RoleService roleService, SavedMessageService savedMessageService) {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
         this.userService = userService;
@@ -66,6 +67,7 @@ class MessengerApiApplicationTests {
         this.memberService = memberService;
         this.messageService = messageService;
         this.roleService = roleService;
+        this.savedMessageService = savedMessageService;
     }
 
     @Test
@@ -584,7 +586,6 @@ class MessengerApiApplicationTests {
         member.setChannel(channel);
         member.setRole(role);
 
-
         when(userService.getUserByName(channelCreationDto.getUsername())).thenReturn(currentUser);
         when(channelService.create(any())).thenReturn(channel);
         when(roleService.save(any())).thenReturn(role);
@@ -603,9 +604,338 @@ class MessengerApiApplicationTests {
                 .andExpect(jsonPath("$.channel.name", is(channel.getName())))
                 .andExpect(jsonPath("$.creator.id", is(channel.getCreator().getId().intValue())))
                 .andExpect(jsonPath("$.creator.name", is(channel.getCreator().getName())))
-                .andExpect(jsonPath("$.creator.image", is(channel.getCreator().getImage())));
-                //.andExpect(jsonPath("$.members.user.id", is()))
-                //.andExpect(jsonPath("$.messages", is(Collections.emptyList())));
+                .andExpect(jsonPath("$.creator.image", is(channel.getCreator().getImage())))
+                .andExpect(jsonPath("$.members[0].user.id", is(member.getUser().getId().intValue())))
+                .andExpect(jsonPath("$.members[0].user.name", is(member.getUser().getName())))
+                .andExpect(jsonPath("$.members[0].user.image", is(member.getUser().getImage())))
+                .andExpect(jsonPath("$.members[0].role.name", is(member.getRole().getName())))
+                .andExpect(jsonPath("$.members[0].role.admin", is(member.getRole().getIsAdmin())))
+                .andExpect(jsonPath("$.members[0].role.creator", is(member.getRole().getIsCreator())))
+                .andExpect(jsonPath("$.messages", is(Collections.emptyList())));
+    }
+
+    @Test
+    void testJoinTheChannel() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Role role = new Role();
+        role.setId(BigInteger.ONE);
+        role.setName("member");
+        role.setIsAdmin(false);
+        role.setIsCreator(false);
+
+        Member member = new Member();
+        member.setId(BigInteger.ONE);
+        member.setUser(currentUser);
+        member.setChannel(channel);
+        member.setRole(role);
+
+        when(userService.getUserByName("curr_user")).thenReturn(currentUser);
+        when(channelService.getChannelByName("test")).thenReturn(channel);
+        when(roleService.save(any())).thenReturn(role);
+        doNothing().when(memberService).save(member);
+
+        mockMvc.perform(post("/api/channels/join")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("username", "curr_user")
+                        .param("channel_name", "test")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void testJoinTheChannelIncorrectRequest() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Role role = new Role();
+        role.setId(BigInteger.ONE);
+        role.setName("member");
+        role.setIsAdmin(false);
+        role.setIsCreator(false);
+
+        Member member = new Member();
+        member.setId(BigInteger.ONE);
+        member.setUser(currentUser);
+        member.setChannel(channel);
+        member.setRole(role);
+
+        when(userService.getUserByName("curr_user")).thenReturn(currentUser);
+        when(channelService.getChannelByName("not_found"))
+                .thenThrow(new ChannelException("Не существует канала с таким названием: not_found"));
+
+        mockMvc.perform(post("/api/channels/join")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("username", "curr_user")
+                        .param("channel_name", "not_found")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testLeaveTheChannel() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Role role = new Role();
+        role.setId(BigInteger.ONE);
+        role.setName("member");
+        role.setIsAdmin(false);
+        role.setIsCreator(false);
+
+        Member member = new Member();
+        member.setId(BigInteger.ONE);
+        member.setUser(currentUser);
+        member.setChannel(channel);
+        member.setRole(role);
+
+        when(userService.getUserByName("curr_user")).thenReturn(currentUser);
+        when(channelService.getChannelById(BigInteger.ONE)).thenReturn(channel);
+        when(memberService.getMemberByUserAndChannel(currentUser, channel)).thenReturn(member);
+        doNothing().when(roleService).delete(member.getRole().getId());
+        doNothing().when(memberService).delete(member.getId());
+
+        mockMvc.perform(delete("/api/channels/1/leave")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("username", "curr_user")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void testLeaveTheChannelIncorrectRequest() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Role role = new Role();
+        role.setId(BigInteger.ONE);
+        role.setName("member");
+        role.setIsAdmin(false);
+        role.setIsCreator(false);
+
+        Member member = new Member();
+        member.setId(BigInteger.ONE);
+        member.setUser(currentUser);
+        member.setChannel(channel);
+        member.setRole(role);
+
+        when(userService.getUserByName("not_found"))
+                .thenThrow(new UserException("Не существует пользовтаеля с таким именем: not_found"));
+
+        mockMvc.perform(delete("/api/channels/1/leave")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("username", "not_found")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void testSaveMessage() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        SavedMessageDto savedMessageDto = new SavedMessageDto();
+        savedMessageDto.setUsername("curr_user");
+        savedMessageDto.setMessageId(BigInteger.ONE);
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Message message = new Message();
+        message.setId(BigInteger.ONE);
+        message.setChannel(channel);
+        message.setSender(currentUser);
+        message.setData("Test save message!");
+        message.setDate(LocalDateTime.now());
+
+        when(userService.getUserByName(savedMessageDto.getUsername())).thenReturn(currentUser);
+        when(messageService.getMessage(BigInteger.ONE)).thenReturn(message);
+        doNothing().when(savedMessageService).save(any());
+
+        mockMvc.perform(post("/api/saved_message/save")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("username", "curr_user")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(savedMessageDto)))
+                .andDo(print())
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void testDeleteSavedMessagesForUser() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        when(userService.getById(BigInteger.ONE)).thenReturn(currentUser);
+        doNothing().when(savedMessageService).deleteAllByUser(currentUser);
+
+        mockMvc.perform(delete("/api/saved_message/delete_all")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("user_id", "1")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void testDeleteSavedMessage() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Message message = new Message();
+        message.setId(BigInteger.ONE);
+        message.setChannel(channel);
+        message.setSender(currentUser);
+        message.setData("Test save message!");
+        message.setDate(LocalDateTime.now());
+
+        when(userService.getById(BigInteger.ONE)).thenReturn(currentUser);
+        when(messageService.getMessage(BigInteger.ONE)).thenReturn(message);
+        doNothing().when(savedMessageService).deleteAllByUser(currentUser);
+
+        mockMvc.perform(delete("/api/saved_message/delete")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .param("user_id", "1")
+                        .param("message_id", "1")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andDo(print())
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void testRoleCreation() throws Exception {
+        String credentials = SECURITY_USERNAME + ":" + SECURITY_PASSWORD;
+        String base64Credentials = new String(Base64.encode(credentials.getBytes()));
+
+        RoleCreationDto roleCreationDto = new RoleCreationDto();
+        roleCreationDto.setName("test_role");
+        roleCreationDto.setIsAdmin(true);
+        roleCreationDto.setUsername("curr_user");
+        roleCreationDto.setChannelName("test");
+
+        User currentUser = new User();
+        currentUser.setId(BigInteger.ONE);
+        currentUser.setName("curr_user");
+        currentUser.setEmail("curr_user@example.com");
+        currentUser.setPassword("secret");
+        currentUser.setImage(null);
+
+        Channel channel = new Channel();
+        channel.setId(BigInteger.ONE);
+        channel.setName("test");
+        channel.setCreator(currentUser);
+
+        Role role = new Role();
+        role.setId(BigInteger.ONE);
+        role.setName("member");
+        role.setIsAdmin(false);
+        role.setIsCreator(false);
+
+        Role newRole = new Role();
+        newRole.setId(role.getId());
+        newRole.setName(roleCreationDto.getName());
+        newRole.setIsAdmin(roleCreationDto.getIsAdmin());
+        newRole.setIsCreator(false);
+
+        Member member = new Member();
+        member.setId(BigInteger.ONE);
+        member.setUser(currentUser);
+        member.setChannel(channel);
+        member.setRole(role);
+
+        when(userService.getUserByName("curr_user")).thenReturn(currentUser);
+        when(channelService.getChannelByName("test")).thenReturn(channel);
+        when(memberService.getMemberByUserAndChannel(currentUser, channel)).thenReturn(member);
+        when(roleService.update(member.getRole().getId(), newRole)).thenReturn(newRole);
+        doNothing().when(memberService).updateRole(member, newRole);
+
+        mockMvc.perform(put("/api/roles/update")
+                        .header("Authorization", "Basic " + base64Credentials)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(roleCreationDto)))
+                .andDo(print())
+                .andExpect(status().isOk());
     }
 
 }
